@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Aqua</title></title>
+    <title>Aqua</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdn.jsdelivr.net/npm/mermaid@10.9.1/dist/mermaid.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
@@ -31,7 +31,6 @@
             user-select: none;
         }
 
-        /* Custom Scrollbar */
         ::-webkit-scrollbar { width: 6px; }
         ::-webkit-scrollbar-track { background: #f1f5f9; }
         ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 10px; }
@@ -58,6 +57,15 @@
         </div>
         
         <div class="flex items-center gap-3">
+            <!-- SVG Upload Button -->
+            <label class="flex items-center gap-2 px-3 py-2 bg-purple-50 text-purple-700 rounded-xl text-xs font-bold cursor-pointer hover:bg-purple-100 transition-all border border-purple-200">
+                <i class="fas fa-file-import"></i>
+                Upload SVG
+                <input type="file" id="svg-upload" accept=".svg" class="hidden" onchange="handleSVGUpload(event)">
+            </label>
+
+            <div class="h-6 w-[1px] bg-slate-200 mx-1"></div>
+
             <button onclick="saveToHistory()" class="p-2 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-all" title="Save to Library">
                 <i class="fas fa-plus"></i>
             </button>
@@ -69,7 +77,7 @@
             </button>
             <div class="h-6 w-[1px] bg-slate-200 mx-1"></div>
             
-            <!-- Zoom Controls -->
+            <!-- Zoom Controls (Up to 1000%) -->
             <div class="flex items-center gap-1 bg-slate-100 rounded-lg p-1">
                 <button onclick="zoomOut()" class="p-2 text-slate-400 hover:text-slate-600 hover:bg-white rounded transition-all" title="Zoom Out">
                     <i class="fas fa-minus text-xs"></i>
@@ -137,6 +145,15 @@
                 </div>
             </div>
 
+            <!-- Success Toast for SVG Upload -->
+            <div id="success-toast" class="hidden absolute top-6 left-6 right-6 z-50 bg-white border-l-4 border-green-500 p-4 rounded-xl shadow-2xl flex items-start gap-3">
+                <i class="fas fa-check-circle text-green-500 mt-1"></i>
+                <div>
+                    <p class="text-xs font-bold text-slate-800">SVG Imported Successfully!</p>
+                    <p class="text-[11px] text-slate-500 mt-0.5" id="success-message"></p>
+                </div>
+            </div>
+
             <!-- Share Link Modal -->
             <div id="share-modal" class="hidden absolute top-6 left-6 right-6 z-50 bg-white border-l-4 border-green-500 p-4 rounded-xl shadow-2xl">
                 <div class="flex items-start gap-3">
@@ -171,7 +188,7 @@
                 </div>
                 <div class="flex items-center gap-2">
                     <span class="w-2 h-2 rounded-full bg-green-400"></span>
-                    <span class="text-[10px] font-bold text-slate-500 uppercase">Live Rendering</span>
+                    <span class="text-[10px] font-bold text-slate-500 uppercase">Max Zoom: 1000%</span>
                 </div>
             </div>
         </div>
@@ -182,12 +199,13 @@
         const container = document.getElementById('mermaid-container');
         const errorToast = document.getElementById('error-toast');
         const errorMessage = document.getElementById('error-message');
+        const successToast = document.getElementById('success-toast');
+        const successMessage = document.getElementById('success-message');
         const historyList = document.getElementById('history-list');
         const zoomLevelEl = document.getElementById('zoom-level');
         const shareModal = document.getElementById('share-modal');
         const shareLinkInput = document.getElementById('share-link-input');
 
-        // In-memory storage instead of localStorage
         let history = [];
         let mermaidReady = false;
         let currentZoom = 1;
@@ -196,7 +214,6 @@
         let isPanning = false;
         let startX, startY;
 
-        // Initialize Mermaid
         mermaid.initialize({
             startOnLoad: false,
             theme: 'neutral',
@@ -206,7 +223,6 @@
         });
         mermaidReady = true;
 
-        // Load flowchart from URL on page load
         function loadFromURL() {
             const params = new URLSearchParams(window.location.search);
             const encodedCode = params.get('code');
@@ -220,7 +236,6 @@
             }
         }
 
-        // Render Logic
         async function renderDiagram() {
             if (!mermaidReady) return;
             const code = input.value.trim();
@@ -242,14 +257,140 @@
             }
         }
 
-        // Zoom Functions
+        // SVG Upload Handler with Mermaid Code Extraction
+        function handleSVGUpload(event) {
+            const file = event.target.files[0];
+            if (!file) return;
+
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                const svgContent = e.target.result;
+                
+                try {
+                    // Try to extract Mermaid code from SVG
+                    const mermaidCode = extractMermaidFromSVG(svgContent);
+                    
+                    if (mermaidCode) {
+                        // If Mermaid code found, populate the editor
+                        input.value = mermaidCode;
+                        renderDiagram();
+                        
+                        showSuccessToast('Mermaid code extracted and loaded into editor!');
+                    } else {
+                        // If no Mermaid code, just display the SVG
+                        const tempDiv = document.createElement('div');
+                        tempDiv.innerHTML = svgContent;
+                        const svgElement = tempDiv.querySelector('svg');
+                        
+                        if (svgElement) {
+                            if (!svgElement.getAttribute('viewBox')) {
+                                const width = parseFloat(svgElement.getAttribute('width')) || 800;
+                                const height = parseFloat(svgElement.getAttribute('height')) || 600;
+                                svgElement.setAttribute('viewBox', `0 0 ${width} ${height}`);
+                            }
+                            
+                            svgElement.removeAttribute('width');
+                            svgElement.removeAttribute('height');
+                            svgElement.style.width = '100%';
+                            svgElement.style.height = 'auto';
+                            svgElement.style.maxWidth = 'none';
+                            
+                            container.innerHTML = '';
+                            container.appendChild(svgElement);
+                            resetZoom();
+                            
+                            input.value = "// SVG imported - No Mermaid code detected\n// You can write new Mermaid code here";
+                            showSuccessToast('SVG displayed. No Mermaid code found in file.');
+                        }
+                    }
+                } catch (error) {
+                    console.error('Error processing SVG:', error);
+                    showErrorToast('Failed to process SVG file');
+                }
+            };
+            
+            reader.readAsText(file);
+            event.target.value = ''; // Reset input
+        }
+
+        // Extract Mermaid code from SVG comments or data attributes
+        function extractMermaidFromSVG(svgContent) {
+            // Method 1: Look for Mermaid code in comments
+            const commentMatch = svgContent.match(/<!--\s*mermaid\s*\n([\s\S]*?)\n\s*-->/);
+            if (commentMatch) {
+                return commentMatch[1].trim();
+            }
+            
+            // Method 2: Look for data-mermaid attribute
+            const dataMatch = svgContent.match(/data-mermaid="([^"]+)"/);
+            if (dataMatch) {
+                return decodeURIComponent(dataMatch[1]);
+            }
+            
+            // Method 3: Look for aria-roledescription which Mermaid often uses
+            const ariaMatch = svgContent.match(/aria-roledescription="([^"]+)"/);
+            if (ariaMatch && ariaMatch[1].includes('flowchart')) {
+                // Try to reconstruct basic structure from SVG elements
+                return reconstructMermaidFromSVG(svgContent);
+            }
+            
+            return null;
+        }
+
+        // Attempt to reconstruct Mermaid code from SVG structure
+        function reconstructMermaidFromSVG(svgContent) {
+            const tempDiv = document.createElement('div');
+            tempDiv.innerHTML = svgContent;
+            const svg = tempDiv.querySelector('svg');
+            
+            if (!svg) return null;
+            
+            // Look for node labels and edge markers
+            const nodes = [];
+            const edges = [];
+            
+            // Find text elements (nodes)
+            const textElements = svg.querySelectorAll('text');
+            textElements.forEach((text, i) => {
+                const content = text.textContent.trim();
+                if (content) {
+                    nodes.push(`    N${i}[${content}]`);
+                }
+            });
+            
+            // Basic reconstruction
+            if (nodes.length > 0) {
+                let code = 'graph TD\n';
+                code += nodes.join('\n');
+                return code;
+            }
+            
+            return null;
+        }
+
+        function showSuccessToast(message) {
+            successMessage.textContent = message;
+            successToast.classList.remove('hidden');
+            errorToast.classList.add('hidden');
+            setTimeout(() => {
+                successToast.classList.add('hidden');
+            }, 4000);
+        }
+
+        function showErrorToast(message) {
+            errorMessage.textContent = message;
+            errorToast.classList.remove('hidden');
+            successToast.classList.add('hidden');
+        }
+
+        // Zoom Functions (Now up to 1000%)
         function zoomIn() {
-            currentZoom = Math.min(currentZoom + 0.1, 6);
+            currentZoom = Math.min(currentZoom + (currentZoom * 0.2), 10); // 10 = 1000%
             applyZoom();
         }
 
         function zoomOut() {
-            currentZoom = Math.max(currentZoom - 0.1, 0.3);
+            currentZoom = Math.max(currentZoom - (currentZoom * 0.2), 0.1);
             applyZoom();
         }
 
@@ -268,7 +409,6 @@
             }
         }
 
-        // Mouse wheel zoom
         const previewPanel = document.getElementById('preview-panel');
         
         previewPanel.addEventListener('wheel', (e) => {
@@ -280,9 +420,7 @@
             }
         }, { passive: false });
 
-        // Pan functionality - drag to move flowchart
         previewPanel.addEventListener('mousedown', (e) => {
-            // Only pan if clicking on the preview area (not on the diagram itself for selection)
             isPanning = true;
             startX = e.clientX - panX;
             startY = e.clientY - panY;
@@ -305,20 +443,11 @@
             }
         });
 
-        previewPanel.addEventListener('mouseleave', () => {
-            if (isPanning) {
-                isPanning = false;
-                previewPanel.classList.remove('panning');
-            }
-        });
-
-        // Event Listeners
         input.addEventListener('input', () => {
             clearTimeout(window.renderTimeout);
             window.renderTimeout = setTimeout(renderDiagram, 300);
         });
 
-        // Copy Function
         function copyCode() {
             input.select();
             navigator.clipboard.writeText(input.value).then(() => {
@@ -326,7 +455,6 @@
                 icon.className = 'fas fa-check text-green-500';
                 setTimeout(() => icon.className = 'fas fa-copy text-sm', 2000);
             }).catch(() => {
-                // Fallback for older browsers
                 document.execCommand('copy');
                 const icon = document.getElementById('copy-icon');
                 icon.className = 'fas fa-check text-green-500';
@@ -334,7 +462,6 @@
             });
         }
 
-        // Fullscreen Toggle
         function toggleFullscreen() {
             const panel = document.getElementById('editor-panel');
             const icon = document.getElementById('fs-icon');
@@ -342,7 +469,6 @@
             icon.className = panel.classList.contains('hidden') ? 'fas fa-compress' : 'fas fa-expand';
         }
 
-        // Generate Share Link
         function generateShareLink() {
             const code = input.value;
             const encodedCode = btoa(encodeURIComponent(code));
@@ -352,8 +478,8 @@
             shareLinkInput.value = shareURL;
             shareModal.classList.remove('hidden');
             errorToast.classList.add('hidden');
+            successToast.classList.add('hidden');
             
-            // Visual feedback on share button
             const icon = document.getElementById('share-icon');
             icon.className = 'fas fa-check text-green-500';
             setTimeout(() => icon.className = 'fas fa-share-alt', 2000);
@@ -372,7 +498,6 @@
             shareModal.classList.add('hidden');
         }
 
-        // Save History
         function saveToHistory() {
             const code = input.value;
             const newEntry = {
@@ -382,7 +507,7 @@
                 date: new Date().toLocaleDateString()
             };
             history.unshift(newEntry);
-            history = history.slice(0, 10); // Keep only last 10
+            history = history.slice(0, 10);
             loadHistory();
         }
 
@@ -412,15 +537,17 @@
             loadHistory();
         }
 
-        // Export SVG
         function downloadSVG() {
             const svg = container.querySelector('svg');
             if (!svg) return;
             
-            // Clone and reset transform for export
             const clone = svg.cloneNode(true);
             clone.style.transform = 'scale(1)';
-            clone.style.transformOrigin = 'center center';
+            
+            // Embed Mermaid code in SVG comment
+            const mermaidCode = input.value;
+            const comment = document.createComment(`\nmermaid\n${mermaidCode}\n`);
+            clone.insertBefore(comment, clone.firstChild);
             
             const serializer = new XMLSerializer();
             const source = serializer.serializeToString(clone);
@@ -433,22 +560,18 @@
             URL.revokeObjectURL(url);
         }
 
-        // Export PDF
         async function downloadPDF() {
             const svg = container.querySelector('svg');
             if (!svg) return;
 
-            // Show loading state
             const originalText = event.target.innerHTML;
             event.target.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Generating...';
             event.target.disabled = true;
 
             try {
-                // Clone SVG and reset transform
                 const clone = svg.cloneNode(true);
                 clone.style.transform = 'scale(1)';
                 
-                // Create temporary container
                 const tempDiv = document.createElement('div');
                 tempDiv.style.position = 'absolute';
                 tempDiv.style.left = '-9999px';
@@ -457,14 +580,12 @@
                 tempDiv.appendChild(clone);
                 document.body.appendChild(tempDiv);
 
-                // Convert to canvas
                 const canvas = await html2canvas(tempDiv, {
                     scale: 2,
                     backgroundColor: '#ffffff',
                     logging: false
                 });
 
-                // Create PDF
                 const { jsPDF } = window.jspdf;
                 const imgData = canvas.toDataURL('image/png');
                 
@@ -472,10 +593,9 @@
                 const imgHeight = canvas.height;
                 const ratio = imgWidth / imgHeight;
                 
-                let pdfWidth = 210; // A4 width in mm
+                let pdfWidth = 210;
                 let pdfHeight = pdfWidth / ratio;
                 
-                // If height exceeds A4, scale to fit
                 if (pdfHeight > 297) {
                     pdfHeight = 297;
                     pdfWidth = pdfHeight * ratio;
@@ -493,19 +613,16 @@
                 pdf.addImage(imgData, 'PNG', xOffset, yOffset, pdfWidth, pdfHeight);
                 pdf.save('flowchart.pdf');
 
-                // Cleanup
                 document.body.removeChild(tempDiv);
             } catch (error) {
                 console.error('PDF generation failed:', error);
                 alert('Failed to generate PDF. Please try again.');
             } finally {
-                // Reset button
                 event.target.innerHTML = originalText;
                 event.target.disabled = false;
             }
         }
 
-        // Initial Load
         window.onload = () => {
             loadFromURL();
             renderDiagram();
